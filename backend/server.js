@@ -129,7 +129,13 @@ app.post('/api/upload', (req, res) => {
 
 // SPA 路由处理
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+    const indexPath = path.join(__dirname, '../frontend/dist/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        console.error(`❌ Index file not found at: ${indexPath}`);
+        res.status(404).send('Application is loading... (Index file not found)');
+    }
 });
 
 // 错误处理中间件
