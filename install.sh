@@ -66,7 +66,19 @@ mkdir -p data logs uploads
 
 # 5. 启动服务
 echo -e "${GREEN}🐳 启动 Docker 容器...${NC}"
-# 使用 docker-compose 启动
+
+# 强制进入安装目录，防止在错误目录下执行
+cd "$INSTALL_DIR" || { echo -e "${RED}❌ 无法进入安装目录 $INSTALL_DIR${NC}"; exit 1; }
+
+# 停止旧容器（如果有）
+echo "🛑 停止旧服务..."
+docker-compose down --remove-orphans || true
+
+# 清理未使用的镜像（可选，释放空间）
+# docker image prune -f
+
+# 使用 docker-compose 启动并强制构建
+echo "🏗️ 构建并启动新服务..."
 docker-compose up -d --build
 
 # 6. 显示完成信息
