@@ -16,7 +16,51 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 静态文件服务
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+const staticDir = path.join(__dirname, '../frontend/dist');
+app.use(express.static(staticDir));
+
+// 显式处理 assets 目录，防止根路径匹配问题
+app.use('/assets', express.static(path.join(staticDir, 'assets')));
+
+// 调试接口：列出静态文件（用于排查部署问题）
+app.get('/api/debug/files', (req, res) => {
+    const fs = require('fs');
+    try {
+        const files = [];
+        function scan(dir) {
+            if (!fs.existsSync(dir)) return;
+            const items = fs.readdirSync(dir);
+            for (const item of items) {
+                const fullPath = path.join(dir, item);
+                const stat = fs.statSync(fullPath);
+                if (stat.isDirectory()) {
+                    scan(fullPath);
+                } else {
+                    files.push(fullPath.replace(staticDir, '').replace(/\\/g, '/'));
+                }
+            }
+        }
+        if (fs.existsSync(staticDir)) {
+            scan(staticDir);
+            res.json({ 
+                success: true,
+                root: staticDir, 
+                files: files,
+                exists: true
+            });
+        } else {
+            res.status(404).json({ 
+                success: false,
+                error: 'Static dir not found', 
+                dir: staticDir,
+                cwd: process.cwd(),
+                dirname: __dirname
+            });
+        }
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message, stack: e.stack });
+    }
+});
 
 // API 路由
 app.get('/api/health', (req, res) => {
