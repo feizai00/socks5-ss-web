@@ -20,7 +20,7 @@ const staticDir = path.join(__dirname, '../frontend/dist');
 app.use(express.static(staticDir));
 
 // 显式处理 assets 目录，防止根路径匹配问题
-app.use('/assets', express.static(path.join(staticDir, 'assets')));
+app.use('/assets', express.static(path.join(staticDir, 'assets'), { fallthrough: false }));
 
 // 调试接口：列出静态文件（用于排查部署问题）
 app.get('/api/debug/files', (req, res) => {
