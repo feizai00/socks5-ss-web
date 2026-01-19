@@ -66,14 +66,8 @@ mkdir -p data logs uploads
 
 # 5. 启动服务
 echo -e "${GREEN}🐳 启动 Docker 容器...${NC}"
-# 确保在安装目录下
-cd "$INSTALL_DIR"
-
-# 赋予相关脚本执行权限（如果存在）
-if [ -f "start.sh" ]; then
-    chmod +x start.sh
-fi
-
+# 赋予启动脚本执行权限
+chmod +x start.sh
 # 使用 docker-compose 启动
 docker-compose up -d --build
 
