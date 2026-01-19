@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Xray Converter 一键部署脚本
-# GitHub: https://github.com/YOUR_USERNAME/xray-converter
+# GitHub: https://github.com/feizai00/socks5-ss-web
 
 set -e
 
@@ -46,7 +46,7 @@ if [ -d "$INSTALL_DIR" ]; then
 else
     echo -e "${GREEN}📂 克隆代码仓库...${NC}"
     # 请替换为您的实际 GitHub 地址
-    git clone https://github.com/YOUR_USERNAME/xray-converter.git "$INSTALL_DIR"
+    git clone https://github.com/feizai00/socks5-ss-web.git "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 fi
 

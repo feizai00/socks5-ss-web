@@ -19,14 +19,14 @@
 
 ```bash
 # 下载并执行安装脚本 (请将 URL 替换为您的 GitHub 仓库 raw 地址)
-bash <(curl -sL https://raw.githubusercontent.com/YOUR_USERNAME/xray-converter/main/install.sh)
+bash <(curl -sL https://raw.githubusercontent.com/feizai00/socks5-ss-web/main/install.sh)
 ```
 
 ### 方式二：手动 Docker 部署
 
 1.  **克隆仓库**
     ```bash
-    git clone https://github.com/YOUR_USERNAME/xray-converter.git
+    git clone https://github.com/feizai00/socks5-ss-web.git
     cd xray-converter
     ```
 
