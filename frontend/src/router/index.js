@@ -4,7 +4,7 @@ const routes = [
   {
     path: '/login',
     name: 'Login',
-    component: () => import('@/views/LoginSimple.vue'),
+    component: () => import('@/views/Login.vue'),
     meta: {
       title: '登录'
     }
@@ -12,7 +12,7 @@ const routes = [
   {
     path: '/',
     name: 'Dashboard',
-    component: () => import('@/views/DashboardSimple.vue'),
+    component: () => import('@/views/Dashboard.vue'),
     meta: {
       title: '仪表板'
     }
@@ -20,7 +20,7 @@ const routes = [
   {
     path: '/customers',
     name: 'Customers',
-    component: () => import('@/views/CustomersComplete.vue'),
+    component: () => import('@/views/Customers.vue'),
     meta: {
       title: '客户管理'
     }
@@ -28,7 +28,7 @@ const routes = [
   {
     path: '/nodes',
     name: 'Nodes',
-    component: () => import('@/views/NodesComplete.vue'),
+    component: () => import('@/views/Nodes.vue'),
     meta: {
       title: '节点管理'
     }
@@ -36,7 +36,7 @@ const routes = [
   {
     path: '/services',
     name: 'Services',
-    component: () => import('@/views/ServicesComplete.vue'),
+    component: () => import('@/views/Services.vue'),
     meta: {
       title: '服务管理'
     }

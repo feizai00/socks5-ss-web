@@ -43,17 +43,9 @@
       </div>
       
       <div class="filter-right">
-        <el-button @click="handleRefresh" :loading="customersStore.loading">
+        <el-button @click="handleRefresh" :loading="loading">
           <el-icon><Refresh /></el-icon>
           刷新
-        </el-button>
-        <el-button @click="handleExport">
-          <el-icon><Download /></el-icon>
-          导出
-        </el-button>
-        <el-button @click="showImportDialog = true">
-          <el-icon><Upload /></el-icon>
-          导入
         </el-button>
       </div>
     </div>
@@ -61,8 +53,8 @@
     <!-- 客户列表 -->
     <div class="table-container">
       <el-table
-        :data="customersStore.customers"
-        :loading="customersStore.loading"
+        :data="filteredCustomers"
+        :loading="loading"
         @selection-change="handleSelectionChange"
         row-key="id"
         class="customers-table"
@@ -129,9 +121,9 @@
     <!-- 分页 -->
     <div class="pagination-container">
       <el-pagination
-        v-model:current-page="customersStore.pagination.page"
-        v-model:page-size="customersStore.pagination.limit"
-        :total="customersStore.total"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="total"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handlePageSizeChange"
@@ -153,75 +145,219 @@
     </div>
 
     <!-- 创建/编辑客户对话框 -->
-    <CustomerDialog
+    <el-dialog
       v-model="showCreateDialog"
-      :customer="editingCustomer"
-      @success="handleDialogSuccess"
-    />
+      :title="editingCustomer ? '编辑客户' : '添加客户'"
+      width="500px"
+      @close="resetForm"
+    >
+      <el-form
+        ref="customerFormRef"
+        :model="customerForm"
+        :rules="customerRules"
+        label-width="100px"
+      >
+        <el-form-item label="微信号" prop="wechat_id">
+          <el-input v-model="customerForm.wechat_id" placeholder="请输入客户微信号" />
+        </el-form-item>
+        
+        <el-form-item label="微信名称" prop="wechat_name">
+          <el-input v-model="customerForm.wechat_name" placeholder="请输入客户微信名称" />
+        </el-form-item>
+        
+        <el-form-item label="电话">
+          <el-input v-model="customerForm.phone" placeholder="请输入客户电话" />
+        </el-form-item>
+        
+        <el-form-item label="邮箱">
+          <el-input v-model="customerForm.email" placeholder="请输入客户邮箱" />
+        </el-form-item>
+        
+        <el-form-item label="状态">
+          <el-select v-model="customerForm.status" style="width: 100%">
+            <el-option label="活跃" value="active" />
+            <el-option label="暂停" value="suspended" />
+            <el-option label="过期" value="expired" />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="备注">
+          <el-input
+            v-model="customerForm.notes"
+            type="textarea"
+            :rows="3"
+            placeholder="客户备注信息"
+          />
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="showCreateDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          {{ editingCustomer ? '更新' : '创建' }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- 客户服务对话框 -->
-    <CustomerServicesDialog
+    <el-dialog
       v-model="showServicesDialog"
-      :customer="selectedCustomer"
-    />
-
-    <!-- 导入对话框 -->
-    <ImportDialog
-      v-model="showImportDialog"
-      title="导入客户数据"
-      :api="customersApi.importCustomers"
-      @success="handleImportSuccess"
-    />
+      title="客户服务列表"
+      width="800px"
+    >
+      <div v-if="selectedCustomer">
+        <div class="customer-info">
+          <h3>{{ selectedCustomer.wechat_name }} ({{ selectedCustomer.wechat_id }})</h3>
+          <p>当前服务数量: {{ selectedCustomer.service_count || 0 }}</p>
+        </div>
+        
+        <el-table :data="customerServices" style="width: 100%">
+          <el-table-column prop="port" label="端口" width="100" />
+          <el-table-column prop="service_name" label="服务名称" width="150" />
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
+                {{ row.status === 'active' ? '运行中' : '已停止' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="expires_at" label="到期时间" width="180">
+            <template #default="{ row }">
+              {{ row.expires_at ? formatTime(row.expires_at) : '永久' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150">
+            <template #default="{ row }">
+              <el-button size="small" type="primary">
+                查看详情
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
-import { useCustomersStore } from '@/stores/customers'
-import { customersApi } from '@/api/customers'
-import { formatTime, debounce } from '@/utils/format'
-import CustomerDialog from '@/components/CustomerDialog.vue'
-import CustomerServicesDialog from '@/components/CustomerServicesDialog.vue'
-import ImportDialog from '@/components/ImportDialog.vue'
-
-const customersStore = useCustomersStore()
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 响应式数据
+const loading = ref(false)
+const submitLoading = ref(false)
 const searchKeyword = ref('')
 const statusFilter = ref('')
 const selectedCustomers = ref([])
 const editingCustomer = ref(null)
 const selectedCustomer = ref(null)
+const customerServices = ref([])
+
+// 分页
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 
 // 对话框控制
 const showCreateDialog = ref(false)
 const showServicesDialog = ref(false)
-const showImportDialog = ref(false)
+const customerFormRef = ref()
 
-// 搜索防抖
-const handleSearch = debounce((keyword) => {
-  customersStore.searchCustomers(keyword)
-}, 500)
+// 模拟客户数据
+const customers = ref([
+  {
+    id: 1,
+    wechat_id: 'user001',
+    wechat_name: '张三',
+    phone: '13800138001',
+    email: 'zhangsan@example.com',
+    status: 'active',
+    service_count: 2,
+    notes: '重要客户',
+    created_at: Date.now() / 1000 - 86400 * 7
+  },
+  {
+    id: 2,
+    wechat_id: 'user002',
+    wechat_name: '李四',
+    phone: '13800138002',
+    email: 'lisi@example.com',
+    status: 'active',
+    service_count: 1,
+    notes: '',
+    created_at: Date.now() / 1000 - 86400 * 3
+  },
+  {
+    id: 3,
+    wechat_id: 'user003',
+    wechat_name: '王五',
+    phone: '13800138003',
+    email: 'wangwu@example.com',
+    status: 'suspended',
+    service_count: 0,
+    notes: '暂停服务',
+    created_at: Date.now() / 1000 - 86400 * 1
+  }
+])
+
+// 表单数据
+const customerForm = reactive({
+  wechat_id: '',
+  wechat_name: '',
+  phone: '',
+  email: '',
+  status: 'active',
+  notes: ''
+})
+
+// 表单验证规则
+const customerRules = {
+  wechat_id: [
+    { required: true, message: '请输入微信号', trigger: 'blur' }
+  ],
+  wechat_name: [
+    { required: true, message: '请输入微信名称', trigger: 'blur' }
+  ]
+}
+
+// 计算属性
+const filteredCustomers = computed(() => {
+  let result = customers.value
+  
+  if (searchKeyword.value) {
+    result = result.filter(customer => 
+      customer.wechat_id.includes(searchKeyword.value) ||
+      customer.wechat_name.includes(searchKeyword.value)
+    )
+  }
+  
+  if (statusFilter.value) {
+    result = result.filter(customer => customer.status === statusFilter.value)
+  }
+  
+  total.value = result.length
+  
+  // 分页
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return result.slice(start, end)
+})
 
 // 方法
+const handleSearch = () => {
+  currentPage.value = 1
+}
+
 const handleFilter = () => {
-  customersStore.filterCustomers({ status: statusFilter.value })
+  currentPage.value = 1
 }
 
 const handleRefresh = () => {
-  customersStore.fetchCustomers()
-}
-
-const handleExport = async () => {
-  try {
-    await customersApi.exportCustomers({
-      ...customersStore.filters,
-      ids: selectedCustomers.value.map(c => c.id)
-    })
-    ElMessage.success('导出成功')
-  } catch (error) {
-    ElMessage.error('导出失败')
-  }
+  loading.value = true
+  setTimeout(() => {
+    loading.value = false
+    ElMessage.success('刷新成功')
+  }, 1000)
 }
 
 const handleSelectionChange = (selection) => {
@@ -233,20 +369,39 @@ const clearSelection = () => {
 }
 
 const handlePageChange = (page) => {
-  customersStore.changePage(page)
+  currentPage.value = page
 }
 
 const handlePageSizeChange = (size) => {
-  customersStore.changePageSize(size)
+  pageSize.value = size
+  currentPage.value = 1
 }
 
 const viewCustomerServices = (customer) => {
   selectedCustomer.value = customer
+  // 模拟客户服务数据
+  customerServices.value = [
+    {
+      id: 1,
+      port: 10001,
+      service_name: '香港节点服务',
+      status: 'active',
+      expires_at: Date.now() / 1000 + 86400 * 30
+    },
+    {
+      id: 2,
+      port: 10002,
+      service_name: '美国节点服务',
+      status: 'active',
+      expires_at: Date.now() / 1000 + 86400 * 15
+    }
+  ]
   showServicesDialog.value = true
 }
 
 const editCustomer = (customer) => {
   editingCustomer.value = customer
+  Object.assign(customerForm, customer)
   showCreateDialog.value = true
 }
 
@@ -258,8 +413,11 @@ const deleteCustomer = async (customer) => {
       { type: 'warning' }
     )
     
-    await customersStore.deleteCustomer(customer.id)
-    ElMessage.success('删除成功')
+    const index = customers.value.findIndex(c => c.id === customer.id)
+    if (index > -1) {
+      customers.value.splice(index, 1)
+      ElMessage.success('删除成功')
+    }
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
@@ -276,7 +434,7 @@ const batchDeleteCustomers = async () => {
     )
     
     const ids = selectedCustomers.value.map(c => c.id)
-    await customersStore.batchDeleteCustomers(ids)
+    customers.value = customers.value.filter(c => !ids.includes(c.id))
     selectedCustomers.value = []
     ElMessage.success('批量删除成功')
   } catch (error) {
@@ -286,15 +444,56 @@ const batchDeleteCustomers = async () => {
   }
 }
 
-const handleDialogSuccess = () => {
-  showCreateDialog.value = false
-  editingCustomer.value = null
-  customersStore.fetchCustomers()
+const handleSubmit = async () => {
+  if (!customerFormRef.value) return
+  
+  try {
+    await customerFormRef.value.validate()
+    submitLoading.value = true
+    
+    // 模拟API请求
+    setTimeout(() => {
+      if (editingCustomer.value) {
+        // 更新客户
+        const index = customers.value.findIndex(c => c.id === editingCustomer.value.id)
+        if (index > -1) {
+          customers.value[index] = { ...customers.value[index], ...customerForm }
+        }
+        ElMessage.success('客户更新成功')
+      } else {
+        // 创建客户
+        const newCustomer = {
+          id: Date.now(),
+          ...customerForm,
+          service_count: 0,
+          created_at: Date.now() / 1000
+        }
+        customers.value.unshift(newCustomer)
+        ElMessage.success('客户创建成功')
+      }
+      
+      showCreateDialog.value = false
+      resetForm()
+      submitLoading.value = false
+    }, 1000)
+  } catch (error) {
+    console.error('表单验证失败:', error)
+  }
 }
 
-const handleImportSuccess = () => {
-  showImportDialog.value = false
-  customersStore.fetchCustomers()
+const resetForm = () => {
+  editingCustomer.value = null
+  Object.assign(customerForm, {
+    wechat_id: '',
+    wechat_name: '',
+    phone: '',
+    email: '',
+    status: 'active',
+    notes: ''
+  })
+  if (customerFormRef.value) {
+    customerFormRef.value.clearValidate()
+  }
 }
 
 const getStatusType = (status) => {
@@ -315,22 +514,19 @@ const getStatusText = (status) => {
   return statusMap[status] || status
 }
 
-// 监听搜索关键词
-watch(searchKeyword, (newVal) => {
-  if (newVal !== customersStore.filters.search) {
-    handleSearch(newVal)
-  }
-})
+const formatTime = (timestamp) => {
+  return new Date(timestamp * 1000).toLocaleString()
+}
 
 // 生命周期
 onMounted(() => {
-  customersStore.fetchCustomers()
+  // 初始化数据
 })
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
 .customers-page {
-  padding: 0;
+  padding: 24px;
 }
 
 .page-header {
@@ -338,21 +534,19 @@ onMounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 24px;
-  
-  .header-left {
-    .page-title {
-      font-size: 24px;
-      font-weight: 600;
-      color: var(--el-text-color-primary);
-      margin: 0 0 8px 0;
-    }
-    
-    .page-description {
-      color: var(--el-text-color-regular);
-      margin: 0;
-      font-size: 14px;
-    }
-  }
+}
+
+.header-left .page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 8px 0;
+}
+
+.header-left .page-description {
+  color: #7f8c8d;
+  margin: 0;
+  font-size: 14px;
 }
 
 .filter-toolbar {
@@ -361,47 +555,45 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 16px;
   padding: 16px;
-  background: var(--el-bg-color);
+  background: white;
   border-radius: 8px;
-  border: 1px solid var(--el-border-color-light);
-  
-  .filter-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  
-  .filter-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.filter-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .table-container {
-  background: var(--el-bg-color);
+  background: white;
   border-radius: 8px;
-  border: 1px solid var(--el-border-color-light);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
 
-.customers-table {
-  .wechat-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    
-    .wechat-avatar {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      font-weight: 500;
-    }
-    
-    .wechat-id {
-      font-family: monospace;
-      font-size: 13px;
-    }
-  }
+.wechat-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wechat-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 500;
+}
+
+.wechat-id {
+  font-family: monospace;
+  font-size: 13px;
 }
 
 .pagination-container {
@@ -415,8 +607,8 @@ onMounted(() => {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color);
+  background: white;
+  border: 1px solid #e6e6e6;
   border-radius: 8px;
   padding: 12px 24px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -424,20 +616,40 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   z-index: 1000;
-  
-  .batch-info {
-    color: var(--el-text-color-primary);
-    font-weight: 500;
-  }
-  
-  .batch-buttons {
-    display: flex;
-    gap: 8px;
-  }
 }
 
-// 响应式设计
+.batch-info {
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.batch-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.customer-info {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.customer-info h3 {
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+}
+
+.customer-info p {
+  margin: 0;
+  color: #7f8c8d;
+}
+
 @media (max-width: 768px) {
+  .customers-page {
+    padding: 16px;
+  }
+  
   .page-header {
     flex-direction: column;
     gap: 16px;
@@ -448,21 +660,15 @@ onMounted(() => {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
-    
-    .filter-left {
-      flex-direction: column;
-      align-items: stretch;
-    }
-    
-    .filter-right {
-      justify-content: center;
-    }
   }
   
-  .customers-table {
-    :deep(.el-table__body-wrapper) {
-      overflow-x: auto;
-    }
+  .filter-left {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-right {
+    justify-content: center;
   }
   
   .batch-actions {
