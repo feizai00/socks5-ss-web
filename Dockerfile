@@ -1,5 +1,14 @@
-# 简化的单阶段构建 Dockerfile
+# 阶段一：构建前端
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+# 阶段二：构建后端并运行
 FROM node:18-alpine
+WORKDIR /app
 
 # 安装系统依赖
 RUN apk add --no-cache \
@@ -11,16 +20,17 @@ RUN apk add --no-cache \
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-WORKDIR /app
-
-# 复制依赖文件
+# 复制后端依赖文件
 COPY package*.json ./
 
-# 安装依赖
+# 安装后端依赖
 RUN npm ci --only=production
 
-# 复制应用代码
-COPY . .
+# 复制后端代码
+COPY backend/ backend/
+
+# 从第一阶段复制前端构建产物
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # 创建必要的目录
 RUN mkdir -p /app/data /app/logs /app/uploads && \
@@ -40,4 +50,4 @@ EXPOSE 3000
 ENTRYPOINT ["dumb-init", "--"]
 
 # 启动应用
-CMD ["npm", "start"]
+CMD ["node", "backend/server.js"]
